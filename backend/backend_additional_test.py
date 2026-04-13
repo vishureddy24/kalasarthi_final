@@ -26,7 +26,7 @@ def test_product_validation():
         # Test with missing required fields
         test_data = {"description": "Test product without title and price"}
         
-        response = requests.post(f"{BASE_URL}/products", 
+        response = requests.post(f"{BASE_URL}/product", 
                                json=test_data, 
                                headers={"Content-Type": "application/json"},
                                timeout=10)
