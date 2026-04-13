@@ -8,7 +8,7 @@ export const metadata = {
   description: 'Discover and connect with skilled Indian artisans',
 }
 
-export default function ArtisansPage() {
+export default function ArtisianPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
