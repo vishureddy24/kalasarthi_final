@@ -1,0 +1,33 @@
+{
+  "app\\dashboard\\khata\\page.js -> @/components/KhataChart": {
+    "id": "app\\dashboard\\khata\\page.js -> @/components/KhataChart",
+    "files": [
+      "static/chunks/_app-pages-browser_components_KhataChart_js.js"
+    ]
+  },
+  "app\\dashboard\\marketplace\\page.js -> @/components/MapDisplay": {
+    "id": "app\\dashboard\\marketplace\\page.js -> @/components/MapDisplay",
+    "files": [
+      "static/chunks/_app-pages-browser_components_MapDisplay_js.js"
+    ]
+  },
+  "app\\dashboard\\page.js -> @/components/RevenueChart": {
+    "id": "app\\dashboard\\page.js -> @/components/RevenueChart",
+    "files": [
+      "static/chunks/_app-pages-browser_components_RevenueChart_js.js"
+    ]
+  },
+  "app\\dashboard\\page.js -> @/components/TopProducts": {
+    "id": "app\\dashboard\\page.js -> @/components/TopProducts",
+    "files": [
+      "static/chunks/_app-pages-browser_components_TopProducts_js.js"
+    ]
+  },
+  "app\\onboarding\\page.js -> @/components/MapPicker": {
+    "id": "app\\onboarding\\page.js -> @/components/MapPicker",
+    "files": [
+      "static/css/_app-pages-browser_components_MapPicker_js.css",
+      "static/chunks/_app-pages-browser_components_MapPicker_js.js"
+    ]
+  }
+}
