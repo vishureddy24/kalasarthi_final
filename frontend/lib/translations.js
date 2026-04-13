@@ -55,6 +55,9 @@ export const translations = {
     profile: 'Profile',
     settings: 'Settings',
     mapView: 'Artisan Map',
+    browseArtisans: 'Browse Artisans',
+    myRequests: 'My Requests',
+    customRequests: 'Custom Requests',
 
     // Dashboard
     namaste: 'Namaste',

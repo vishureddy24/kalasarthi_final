@@ -1,18 +1,21 @@
-'use client'
+"use client";
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Suspense, lazy } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLanguage } from '@/contexts/LanguageContext'
 import Sidebar from '@/components/layout/Sidebar'
 import Header from '@/components/layout/Header'
-import VoiceButton from '@/components/VoiceButton'
-import Chatbot from '@/components/Chatbot'
-import { Loader2 } from 'lucide-react'
+import { Loader2, MessageSquare, Users } from 'lucide-react'
+
+// Lazy load heavy floating components
+const VoiceButton = lazy(() => import('@/components/VoiceButton'))
+const Chatbot = lazy(() => import('@/components/Chatbot'))
 
 // Menu definitions
 const artisanMenu = [
   { href: '/dashboard', labelKey: 'dashboard', icon: 'LayoutDashboard' },
+  { href: '/dashboard/requests', labelKey: 'customRequests', icon: 'MessageSquare' },
   { href: '/dashboard/products', labelKey: 'myProducts', icon: 'Package' },
   { href: '/dashboard/add-product', labelKey: 'addProduct', icon: 'PlusCircle' },
   { href: '/dashboard/ai-tools', labelKey: 'aiTools', icon: 'Sparkles' },
@@ -22,7 +25,9 @@ const artisanMenu = [
 
 const buyerMenu = [
   { href: '/dashboard', labelKey: 'dashboard', icon: 'LayoutDashboard' },
+  { href: '/artisans', labelKey: 'browseArtisans', icon: 'Users' },
   { href: '/dashboard/marketplace', labelKey: 'marketplace', icon: 'Store' },
+  { href: '/dashboard/my-requests', labelKey: 'myRequests', icon: 'MessageSquare' },
   { href: '/dashboard/new-arrivals', labelKey: 'newArrivals', icon: 'Sparkles' },
   { href: '/dashboard/orders', labelKey: 'myOrders', icon: 'ShoppingBag' },
   { href: '/dashboard/wishlist', labelKey: 'wishlist', icon: 'Heart' },
@@ -124,14 +129,16 @@ export default function DashboardLayout({ children }) {
           router={router}
         />
 
-        <main key={pathname} className="flex-1 overflow-y-auto p-6 relative">
+        <main className="flex-1 overflow-y-auto p-6 relative">
           {children}
         </main>
       </div>
 
-      {/* Floating Components */}
-      <VoiceButton />
-      <Chatbot />
+      {/* Floating Components - Lazy Loaded */}
+      <Suspense fallback={null}>
+        <VoiceButton />
+        <Chatbot />
+      </Suspense>
     </div>
   )
 }

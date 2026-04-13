@@ -133,7 +133,9 @@ export default function CartPage() {
     return appliedCoupon.value
   }
   const discount = calculateDiscount()
-  const total = subtotal - discount
+  const gstRate = 0.18
+  const gstAmount = Math.round((subtotal - discount) * gstRate)
+  const total = subtotal - discount + gstAmount
 
   const handleRemove = async (productId) => {
     try {
@@ -175,6 +177,7 @@ export default function CartPage() {
           items: cart.items,
           subtotal,
           discount,
+          gst: gstAmount,
           coupon: appliedCoupon?.code,
           userEmail: userData.profile?.email || user.email,
           userName: userData.profile?.displayName || user.displayName
@@ -384,6 +387,12 @@ export default function CartPage() {
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Shipping</span>
                   <span className="text-green-600 font-medium">Free</span>
+                </div>
+
+                {/* GST */}
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">GST (18%)</span>
+                  <span className="font-medium">₹{gstAmount.toLocaleString('en-IN')}</span>
                 </div>
 
                 {/* Coupon Section */}

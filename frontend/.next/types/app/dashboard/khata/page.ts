@@ -1,4 +1,4 @@
-// File: C:\Users\vishu\KalaSarthi\frontend\app\dashboard\khata\page.js
+// File: C:\Users\vishu\Downloads\kalasarthi\frontend\app\dashboard\khata\page.js
 import * as entry from '../../../../../app/dashboard/khata/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

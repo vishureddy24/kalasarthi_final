@@ -34,7 +34,7 @@ const STATES = [
 ]
 
 export default function OnboardingPage() {
-  const { user, userProfile, loading, refreshProfile } = useAuth()
+  const { user, userProfile, loading, refreshProfile, logout } = useAuth()
   const router = useRouter()
   const [step, setStep] = useState(0)
   const [role, setRole] = useState('')
@@ -137,8 +137,9 @@ export default function OnboardingPage() {
             type="button"
             variant="ghost" 
             size="sm" 
-            onClick={() => {
-              console.log('Navigating to login...')
+            onClick={async () => {
+              console.log('Signing out and navigating to login...')
+              await logout()
               router.push('/login')
             }}
             className="mt-4 text-muted-foreground hover:text-foreground"

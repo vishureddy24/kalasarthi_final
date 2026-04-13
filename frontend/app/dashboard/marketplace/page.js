@@ -30,42 +30,29 @@ export default function MarketplacePage() {
   const [viewMode, setViewMode] = useState('grid')
   const [wishlistIds, setWishlistIds] = useState([])
 
-  // Fetch wishlist on load
-  useEffect(() => {
-    const fetchWishlist = async () => {
-      if (!user) return
-      try {
-        const token = await user.getIdToken()
-        const res = await fetch('/api/wishlist', {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        if (res.ok) {
-          const data = await res.json()
-          setWishlistIds(data.wishlist?.map(w => w.productId) || [])
-        }
-      } catch (err) {
-        console.error('Wishlist fetch error:', err)
-      }
-    }
-    fetchWishlist()
-  }, [user])
-
+  // Fetch all data in parallel on load
   useEffect(() => {
     async function fetchAll() {
       if (!user) return
       try {
         const token = await user.getIdToken()
-        const [resProd, resArtisan] = await Promise.all([
+        const [resProd, resArtisan, resWishlist] = await Promise.all([
           fetch('/api/products', { headers: { Authorization: `Bearer ${token}` } }),
-          fetch('/api/artisans', { headers: { Authorization: `Bearer ${token}` } })
+          fetch('/api/artisans', { headers: { Authorization: `Bearer ${token}` } }),
+          fetch('/api/wishlist', { headers: { Authorization: `Bearer ${token}` } })
         ])
         if (resProd.ok) {
           const data = await resProd.json()
+          console.log('Products from API:', data.products?.[0]) // Debug first product
           setProducts(data.products || [])
         }
         if (resArtisan.ok) {
           const data = await resArtisan.json()
           setArtisans(data.artisans || [])
+        }
+        if (resWishlist.ok) {
+          const data = await resWishlist.json()
+          setWishlistIds(data.wishlist?.map(w => w.productId) || [])
         }
       } catch (err) {
         console.error('Failed to fetch:', err)

@@ -125,7 +125,8 @@ export default function NewArrivalsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {products.map((product) => (
-            <Card key={product._id} className="overflow-hidden border-primary/10 group">
+            <div key={product._id}>
+            <Card className="overflow-hidden border-primary/10 group">
               {/* Image */}
               <div className="relative aspect-square bg-secondary/30 overflow-hidden">
                 {product.images?.[0] ? (
@@ -188,6 +189,7 @@ export default function NewArrivalsPage() {
                 </Button>
               </CardContent>
             </Card>
+            </div>
           ))}
         </div>
       )}

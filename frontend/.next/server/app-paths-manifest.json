@@ -1,6 +1,7 @@
 {
-  "/api/[[...path]]/route": "app/api/[[...path]]/route.js",
-  "/dashboard/khata/page": "app/dashboard/khata/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
-  "/dashboard/schemes/page": "app/dashboard/schemes/page.js"
+  "/dashboard/products/page": "app/dashboard/products/page.js",
+  "/dashboard/add-product/page": "app/dashboard/add-product/page.js",
+  "/dashboard/ai-tools/page": "app/dashboard/ai-tools/page.js",
+  "/dashboard/schemes/page": "app/dashboard/schemes/page.js",
+  "/dashboard/khata/page": "app/dashboard/khata/page.js"
 }

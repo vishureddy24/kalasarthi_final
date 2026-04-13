@@ -158,6 +158,11 @@ async function handleRoute(request, { params }) {
           return corsResponse({ profile: null, error: 'Database unavailable' }, 503)
         }
 
+        if (!user.uid) {
+          console.error('User profile GET error: user.uid is missing', user)
+          return corsResponse({ profile: null, error: 'Invalid user token' }, 400)
+        }
+
         const profile = await database.collection('users').findOne({ id: user.uid })
         return corsResponse({ profile: profile || null })
       } catch (err) {
@@ -276,6 +281,31 @@ async function handleRoute(request, { params }) {
       return corsResponse({ product }, 201)
     }
 
+    // --- Products New Arrivals (Public) ---
+    if (path[0] === 'products' && path[1] === 'new-arrivals' && method === 'GET') {
+      try {
+        // Get products from last 30 days
+        const thirtyDaysAgo = new Date()
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+        
+        const products = await database.collection('products')
+          .find({ 
+            isActive: { $ne: false },
+            createdAt: { $gte: thirtyDaysAgo.toISOString() }
+          })
+          .sort({ createdAt: -1 })
+          .limit(20)
+          .toArray()
+        
+        // Remove MongoDB _id
+        const cleanProducts = products.map(({ _id, ...rest }) => rest)
+        return corsResponse({ products: cleanProducts })
+      } catch (err) {
+        console.error('New arrivals API error:', err)
+        return corsResponse({ error: 'Failed to fetch new arrivals', details: err.message }, 500)
+      }
+    }
+
     // Product by ID - GET
     if (path[0] === 'products' && path[1] && method === 'GET') {
       const user = await verifyToken(request)
@@ -350,21 +380,33 @@ async function handleRoute(request, { params }) {
     if (route === '/cart/add' && method === 'POST') {
       const user = await verifyToken(request)
       if (!user) return corsResponse({ error: 'Unauthorized' }, 401)
-      const { product } = await request.json()
+      if (!database) return corsResponse({ error: 'Database unavailable' }, 503)
+      
+      const body = await request.json()
+      // Support both formats: { productId, title, price } and { product: { id, title, price } }
+      const productId = body.productId || body.product?.id || body.id
+      const title = body.title || body.product?.title || body.name
+      const price = body.price || body.product?.price || 0
+      const image = body.image || body.product?.image || body.product?.images?.[0]
+      const quantity = body.quantity || 1
+      
+      if (!productId) {
+        return corsResponse({ error: 'Invalid product data: productId required' }, 400)
+      }
+      
       let cart = await database.collection('cart').findOne({ userId: user.uid })
       if (!cart) cart = { userId: user.uid, items: [], totalAmount: 0 }
       
-      const existingIdx = cart.items.findIndex(i => i.productId === product.id)
+      const existingIdx = cart.items.findIndex(i => i.productId === productId)
       if (existingIdx >= 0) {
-        cart.items[existingIdx].quantity += 1
+        cart.items[existingIdx].quantity += quantity
       } else {
         cart.items.push({ 
-          productId: product.id, 
-          title: product.title, 
-          price: product.price, 
-          quantity: 1, 
-          image: product.imageUrl,
-          artisanName: product.artisanName
+          productId, 
+          title: title || 'Product', 
+          price: Number(price) || 0, 
+          image,
+          quantity 
         })
       }
       cart.totalAmount = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
@@ -490,15 +532,28 @@ async function handleRoute(request, { params }) {
       if (!user) return corsResponse({ error: 'Unauthorized' }, 401)
       if (!razorpay) return corsResponse({ error: 'Razorpay not configured' }, 500)
       
-      const { amount, items, subtotal, discount, coupon, userEmail, userName } = await request.json()
+      const { amount, items, subtotal, discount, gst, coupon, userEmail, userName } = await request.json()
       
       try {
+        // Calculate GST if not provided
+        const subtotalAmount = subtotal || amount
+        const discountAmount = discount || 0
+        const taxableAmount = subtotalAmount - discountAmount
+        const gstRate = 0.18
+        const gstAmount = gst || Math.round(taxableAmount * gstRate)
+        const cgst = Math.round(gstAmount / 2)
+        const sgst = Math.round(gstAmount / 2)
+        const totalAmount = taxableAmount + gstAmount
+
         // Create Razorpay order
         const razorpayOrder = await razorpay.orders.create({ 
-          amount: Math.round(amount * 100), // Convert to paise
+          amount: Math.round(totalAmount * 100), // Convert to paise
           currency: "INR",
           receipt: `receipt_${Date.now()}`
         })
+        
+        // Generate Invoice Number
+        const invoiceNumber = `INV-KS-${Date.now().toString().slice(-8)}`
         
         // Save pending order to database
         const orderData = {
@@ -507,10 +562,17 @@ async function handleRoute(request, { params }) {
           userEmail: userEmail || user.email,
           userName: userName || user.name || 'Customer',
           items: items || [],
-          subtotal: subtotal || amount,
-          discount: discount || 0,
+          subtotal: subtotalAmount,
+          discount: discountAmount,
+          gst: gstAmount,
+          cgst,
+          sgst,
+          taxableAmount,
           coupon: coupon || null,
-          total: amount,
+          total: totalAmount,
+          invoiceNumber,
+          invoiceDate: new Date().toISOString(),
+          hsnCode: '9997', // Handicrafts HSN code
           razorpayOrderId: razorpayOrder.id,
           status: 'pending',
           timeline: [{ status: 'created', time: new Date().toISOString() }],
@@ -553,19 +615,25 @@ async function handleRoute(request, { params }) {
         return corsResponse({ error: 'Order not found' }, 404)
       }
       
-      // Update order with payment details
+      // Update order with payment details and status
+      const now = new Date().toISOString()
       await database.collection('orders').updateOne(
         { razorpayOrderId: razorpay_order_id },
         {
           $set: {
+            status: 'paid',
             razorpayPaymentId: razorpay_payment_id,
             razorpaySignature: razorpay_signature,
-            updatedAt: new Date().toISOString()
+            paidAt: now,
+            updatedAt: now
+          },
+          $push: {
+            timeline: { status: 'paid', time: now, paymentId: razorpay_payment_id }
           }
         }
       )
       
-      return corsResponse({ success: true, message: 'Payment verified. Order will be processed.' })
+      return corsResponse({ success: true, message: 'Payment verified. Order has been paid.' })
     }
 
     if (route === '/orders' && method === 'GET') {
@@ -1874,6 +1942,342 @@ Respond naturally as a helpful assistant.`
       } catch (err) {
         console.error('Fetch applications error:', err)
         return corsResponse({ error: 'Failed to fetch applications' }, 500)
+      }
+    }
+
+    // --- Get All Artisans ---
+    if (route === '/artisans' && method === 'GET') {
+      const user = await verifyToken(request)
+      if (!user) return corsResponse({ error: 'Unauthorized' }, 401)
+      
+      try {
+        const artisans = await database.collection('users')
+          .find({ role: 'artisan' })
+          .project({ password: 0, _id: 0 })
+          .sort({ displayName: 1 })
+          .toArray()
+        
+        return corsResponse({ 
+          artisans: artisans.map(a => ({
+            ...a,
+            id: a.id || a._id?.toString()
+          }))
+        })
+      } catch (err) {
+        console.error('Fetch artisans error:', err)
+        return corsResponse({ error: 'Failed to fetch artisans' }, 500)
+      }
+    }
+
+    // --- Get Artisan by ID ---
+    if (route.startsWith('/artisans/') && method === 'GET') {
+      const user = await verifyToken(request)
+      if (!user) return corsResponse({ error: 'Unauthorized' }, 401)
+      
+      try {
+        const artisanId = route.split('/')[2]
+        const artisan = await database.collection('users').findOne(
+          { id: artisanId, role: 'artisan' },
+          { projection: { password: 0, _id: 0 } }
+        )
+        
+        if (!artisan) {
+          return corsResponse({ error: 'Artisan not found' }, 404)
+        }
+        
+        return corsResponse({ 
+          artisan: {
+            ...artisan,
+            id: artisan.id || artisan._id?.toString()
+          }
+        })
+      } catch (err) {
+        console.error('Fetch artisan error:', err)
+        return corsResponse({ error: 'Failed to fetch artisan' }, 500)
+      }
+    }
+
+    // --- Custom Requests ---
+    // Create custom request
+    if (route === '/custom-requests' && method === 'POST') {
+      const user = await verifyToken(request)
+      if (!user) return corsResponse({ error: 'Unauthorized' }, 401)
+      
+      try {
+        const body = await request.json()
+        const { artisanId, message, budget, deadline, sampleImages, buyerPhone } = body
+        
+        const now = new Date().toISOString()
+        const customRequest = {
+          id: crypto.randomUUID(),
+          buyerId: user.uid,
+          buyerEmail: user.email,
+          buyerName: user.displayName || 'Buyer',
+          buyerPhone,
+          artisanId,
+          message,
+          budget: budget || null,
+          deadline: deadline || null,
+          sampleImages: sampleImages || [],
+          status: 'pending',
+          statusHistory: [
+            { status: 'pending', date: now, note: 'Request created' }
+          ],
+          createdAt: now,
+          updatedAt: now
+        }
+        
+        await database.collection('customRequests').insertOne(customRequest)
+        
+        // Send email notification to artisan
+        try {
+          // Fetch artisan profile to get email
+          const artisanProfile = await database.collection('users').findOne({ uid: artisanId })
+          if (artisanProfile?.email) {
+            const { sendCustomRequestEmailToArtisan } = await import('@/lib/sendEmail')
+            await sendCustomRequestEmailToArtisan(customRequest, artisanProfile.email, artisanProfile.displayName || 'Artisan')
+          }
+        } catch (emailErr) {
+          console.log('Email sending failed (artisan may not have email):', emailErr.message)
+        }
+        
+        // Create notification for artisan
+        await database.collection('notifications').insertOne({
+          id: crypto.randomUUID(),
+          userId: artisanId,
+          title: 'New Custom Request',
+          message: `${user.displayName || 'A buyer'} has requested a custom product.`,
+          type: 'custom_request',
+          read: false,
+          data: { requestId: customRequest.id },
+          createdAt: new Date().toISOString()
+        })
+        
+        return corsResponse({ 
+          success: true, 
+          request: customRequest,
+          message: 'Request sent successfully'
+        }, 201)
+        
+      } catch (err) {
+        console.error('Custom request error:', err)
+        return corsResponse({ error: 'Failed to create request' }, 500)
+      }
+    }
+
+    // Get custom requests for artisan
+    if (route === '/custom-requests/artisan' && method === 'GET') {
+      const user = await verifyToken(request)
+      if (!user) return corsResponse({ error: 'Unauthorized' }, 401)
+      
+      try {
+        const requests = await database.collection('customRequests')
+          .find({ artisanId: user.uid })
+          .sort({ createdAt: -1 })
+          .toArray()
+        
+        return corsResponse({ 
+          requests: requests.map(({_id, ...rest}) => rest),
+          count: requests.length 
+        })
+      } catch (err) {
+        console.error('Fetch requests error:', err)
+        return corsResponse({ error: 'Failed to fetch requests' }, 500)
+      }
+    }
+
+    // Get custom requests for buyer
+    if (route === '/custom-requests/buyer' && method === 'GET') {
+      const user = await verifyToken(request)
+      if (!user) return corsResponse({ error: 'Unauthorized' }, 401)
+      
+      try {
+        const requests = await database.collection('customRequests')
+          .find({ buyerId: user.uid })
+          .sort({ createdAt: -1 })
+          .toArray()
+        
+        return corsResponse({ 
+          requests: requests.map(({_id, ...rest}) => rest),
+          count: requests.length 
+        })
+      } catch (err) {
+        console.error('Fetch requests error:', err)
+        return corsResponse({ error: 'Failed to fetch requests' }, 500)
+      }
+    }
+
+    // Update custom request status (accept/reject)
+    if (route === '/custom-requests/status' && method === 'PUT') {
+      const user = await verifyToken(request)
+      if (!user) return corsResponse({ error: 'Unauthorized' }, 401)
+      
+      try {
+        const body = await request.json()
+        const { requestId, status, responseMessage } = body
+        const now = new Date().toISOString()
+        
+        const update = {
+          status,
+          updatedAt: now
+        }
+        if (responseMessage) {
+          update.responseMessage = responseMessage
+        }
+        
+        const result = await database.collection('customRequests').findOneAndUpdate(
+          { id: requestId, artisanId: user.uid },
+          { 
+            $set: update,
+            $push: {
+              statusHistory: {
+                status,
+                date: now,
+                note: responseMessage || `Request ${status}`
+              }
+            }
+          },
+          { returnDocument: 'after' }
+        )
+        
+        if (!result) {
+          return corsResponse({ error: 'Request not found' }, 404)
+        }
+        
+        // Notify buyer
+        await database.collection('notifications').insertOne({
+          id: crypto.randomUUID(),
+          userId: result.buyerId,
+          title: `Request ${status === 'accepted' ? 'Accepted' : 'Declined'}`,
+          message: `Your custom request has been ${status} by the artisan.`,
+          type: 'custom_request_update',
+          read: false,
+          data: { requestId, status },
+          createdAt: new Date().toISOString()
+        })
+        
+        // Send email notification to buyer
+        try {
+          const { sendRequestStatusEmailToBuyer } = await import('@/lib/sendEmail')
+          await sendRequestStatusEmailToBuyer(result, status, result.buyerEmail)
+        } catch (emailErr) {
+          console.log('Email sending failed:', emailErr.message)
+        }
+        
+        return corsResponse({ 
+          success: true, 
+          request: result,
+          message: `Request ${status} successfully`
+        })
+        
+      } catch (err) {
+        console.error('Update request error:', err)
+        return corsResponse({ error: 'Failed to update request' }, 500)
+      }
+    }
+
+    // --- Chat System ---
+    // Send chat message
+    if (route === '/chat' && method === 'POST') {
+      const user = await verifyToken(request)
+      if (!user) return corsResponse({ error: 'Unauthorized' }, 401)
+      
+      try {
+        const body = await request.json()
+        const { requestId, message, senderRole } = body
+        
+        if (!requestId || !message) {
+          return corsResponse({ error: 'requestId and message required' }, 400)
+        }
+        
+        // Verify request exists and user is part of it
+        const chatRequest = await database.collection('customRequests').findOne({
+          id: requestId,
+          $or: [
+            { buyerId: user.uid },
+            { artisanId: user.uid }
+          ]
+        })
+        
+        if (!chatRequest) {
+          return corsResponse({ error: 'Request not found' }, 404)
+        }
+        
+        // Only allow chat if request is accepted
+        if (chatRequest.status !== 'accepted') {
+          return corsResponse({ error: 'Chat only available for accepted requests' }, 403)
+        }
+        
+        const chatMessage = {
+          id: crypto.randomUUID(),
+          requestId,
+          senderId: user.uid,
+          senderRole: senderRole || (user.uid === chatRequest.buyerId ? 'buyer' : 'artisan'),
+          senderName: user.displayName || (senderRole === 'buyer' ? 'Buyer' : 'Artisan'),
+          message,
+          createdAt: new Date().toISOString()
+        }
+        
+        await database.collection('chatMessages').insertOne(chatMessage)
+        
+        // Notify recipient
+        const recipientId = user.uid === chatRequest.buyerId ? chatRequest.artisanId : chatRequest.buyerId
+        await database.collection('notifications').insertOne({
+          id: crypto.randomUUID(),
+          userId: recipientId,
+          title: 'New Message',
+          message: `${chatMessage.senderName}: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`,
+          type: 'chat_message',
+          read: false,
+          data: { requestId, chatId: chatMessage.id },
+          createdAt: new Date().toISOString()
+        })
+        
+        return corsResponse({ success: true, message: chatMessage }, 201)
+      } catch (err) {
+        console.error('Chat send error:', err)
+        return corsResponse({ error: 'Failed to send message' }, 500)
+      }
+    }
+    
+    // Get chat messages for a request
+    if (route === '/chat' && method === 'GET') {
+      const user = await verifyToken(request)
+      if (!user) return corsResponse({ error: 'Unauthorized' }, 401)
+      
+      try {
+        const url = new URL(request.url)
+        const requestId = url.searchParams.get('requestId')
+        
+        if (!requestId) {
+          return corsResponse({ error: 'requestId required' }, 400)
+        }
+        
+        // Verify user is part of this request
+        const chatRequest = await database.collection('customRequests').findOne({
+          id: requestId,
+          $or: [
+            { buyerId: user.uid },
+            { artisanId: user.uid }
+          ]
+        })
+        
+        if (!chatRequest) {
+          return corsResponse({ error: 'Request not found' }, 404)
+        }
+        
+        const messages = await database.collection('chatMessages')
+          .find({ requestId })
+          .sort({ createdAt: 1 })
+          .toArray()
+        
+        return corsResponse({ 
+          messages: messages.map(({_id, ...rest}) => rest),
+          count: messages.length 
+        })
+      } catch (err) {
+        console.error('Chat fetch error:', err)
+        return corsResponse({ error: 'Failed to fetch messages' }, 500)
       }
     }
 

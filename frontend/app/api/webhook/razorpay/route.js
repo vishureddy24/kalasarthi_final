@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { MongoClient } from 'mongodb'
-import { sendOrderConfirmationEmailWithInvoice, sendOrderNotificationToArtisan } from '@/lib/sendEmail'
+import { sendInvoiceEmail, sendOrderConfirmationEmail, sendOrderNotificationToArtisan } from '@/lib/sendInvoiceEmail'
 import { generateInvoice } from '@/lib/generateInvoice'
+import { uploadPDF } from '@/lib/cloudinary'
 
 // MongoDB connection
 let client
@@ -111,11 +112,21 @@ export async function POST(req) {
       if (!order.emailSent && order.userEmail) {
         try {
           // Generate invoice PDF
-          const { filePath } = await generateInvoice(order)
-          console.log('Invoice generated:', filePath)
+          const { buffer, fileName } = await generateInvoice(order)
+          console.log('Invoice generated in memory')
+          
+          // NEW: Upload to Cloudinary for persistence
+          let invoiceUrl = null
+          try {
+            const uploadResult = await uploadPDF(buffer, fileName)
+            invoiceUrl = uploadResult.secure_url
+            console.log('Invoice uploaded to Cloudinary:', invoiceUrl)
+          } catch (uploadErr) {
+            console.error('Cloudinary upload error:', uploadErr)
+          }
           
           // Send email with invoice attachment
-          await sendOrderConfirmationEmailWithInvoice(order, order.userEmail, order.userName || 'Customer', filePath)
+          await sendInvoiceEmail(order, buffer, fileName)
           
           await database.collection('orders').updateOne(
             { razorpayOrderId: orderId },
@@ -124,17 +135,18 @@ export async function POST(req) {
                 emailSent: true, 
                 emailSentAt: new Date().toISOString(),
                 invoiceGenerated: true,
-                invoicePath: filePath
+                invoiceNumber: order.invoiceNumber || `INV-KS-${Date.now().toString().slice(-8)}`,
+                invoiceUrl: invoiceUrl // Save the URL for future use
               } 
             }
           )
-          console.log('Confirmation email with invoice sent to:', order.userEmail)
+          console.log('Invoice email sent to:', order.userEmail || order.buyerEmail)
         } catch (emailErr) {
-          console.error('Failed to send confirmation email:', emailErr)
-          // Fallback: try without invoice
+          console.error('Failed to send invoice email:', emailErr)
+          // Fallback: try sending order confirmation without invoice
           try {
-            await sendOrderConfirmationEmailWithInvoice(order, order.userEmail, order.userName || 'Customer', null)
-            console.log('Confirmation email sent without invoice')
+            await sendOrderConfirmationEmail(order)
+            console.log('Order confirmation sent without invoice')
           } catch (fallbackErr) {
             console.error('Fallback email also failed:', fallbackErr)
           }
@@ -214,9 +226,3 @@ export async function POST(req) {
   }
 }
 
-// Disable body parsing for raw body access
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-}

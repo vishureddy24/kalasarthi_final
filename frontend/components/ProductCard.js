@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { Heart, ShoppingCart } from 'lucide-react'
-import Image from 'next/image'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
@@ -76,7 +75,7 @@ export default function ProductCard({ product, initialIsWishlisted = false, show
           productId: product.id,
           title: product.title,
           price: product.price,
-          image: product.images?.[0],
+          image: product.images?.[0] || product.imageUrl,
           quantity: 1
         })
       })
@@ -118,12 +117,11 @@ export default function ProductCard({ product, initialIsWishlisted = false, show
       {/* Product Image */}
       <Link href={`/dashboard/marketplace/${product.id}`}>
         <div className="relative aspect-square overflow-hidden bg-gray-100">
-          {product.images?.[0] ? (
-            <Image
-              src={product.images[0]}
+          {(product.images?.[0] || product.imageUrl) ? (
+            <img
+              src={product.images?.[0] || product.imageUrl}
               alt={product.title}
-              fill
-              className="object-cover group-hover:scale-105 transition-transform duration-300"
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-gray-400">

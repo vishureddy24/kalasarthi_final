@@ -1,4 +1,4 @@
-// File: C:\Users\vishu\KalaSarthi\frontend\app\dashboard\schemes\page.js
+// File: C:\Users\vishu\Downloads\kalasarthi\frontend\app\dashboard\schemes\page.js
 import * as entry from '../../../../../app/dashboard/schemes/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

@@ -6,13 +6,15 @@ import { Button } from '@/components/ui/button'
 import {
   Sparkles, User, ShieldHalf, LogOut, ChevronRight,
   LayoutDashboard, Package, PlusCircle, Wallet, Landmark,
-  Store, ShoppingBag, Heart, TicketPercent, ShoppingCart
+  Store, ShoppingBag, Heart, TicketPercent, ShoppingCart,
+  MessageSquare, Users
 } from 'lucide-react'
 
 // Icon mapping
 const iconMap = {
   LayoutDashboard, Package, PlusCircle, Sparkles, Wallet, Landmark,
-  Store, ShoppingBag, Heart, TicketPercent, ShoppingCart
+  Store, ShoppingBag, Heart, TicketPercent, ShoppingCart,
+  MessageSquare, Users
 }
 
 // Simple NavLink - no double navigation
